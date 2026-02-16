@@ -134,24 +134,79 @@ def main():
                 mapping_data[parts[0]].append(offset)
                 copyfile((inputpath, 'tests', f"{parts[1]}.in"),
                     (work_dir, 'res/testdata', f"{offset}.in"))
-                copyfile((inputpath, 'tests', f"{parts[1]}.out"),
+    try:
+        with open(subtasks_json_src, 'rt', encoding='utf-8') as json_file:
+            subtasks_data = json.load(json_file)
+    except FileNotFoundError:
+        logging.error("subtasks.json not found at %s", subtasks_json_src)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        logging.error("Failed to parse JSON in subtasks.json at %s: %s", subtasks_json_src, e)
+        sys.exit(1)
+    except OSError as e:
+        logging.error("Error reading subtasks.json at %s: %s", subtasks_json_src, e)
+        sys.exit(1)
+
+    if 'subtasks' not in subtasks_data or not isinstance(subtasks_data['subtasks'], dict):
+        logging.error(
+            "subtasks.json at %s has unexpected format: expected a 'subtasks' object",
+            subtasks_json_src,
+        )
+        sys.exit(1)
+
+    for sub in subtasks_data['subtasks']:
+        mapping_data[sub] = []
+
+    try:
+        with open(mapping_src, 'rt', encoding='utf-8') as mapping_file:
+            for lineno, row in enumerate(mapping_file, start=1):
+                stripped = row.strip()
+                if not stripped or stripped.startswith('#'):
+                    continue
+                parts = stripped.split()
+                if len(parts) != 2:
+                    logging.warning(
+                        "Skipping malformed line %d in mapping file %s: %r",
+                        lineno,
+                        mapping_src,
+                        row.rstrip("\n"),
+                    )
+                    continue
+                subtask_name, test_name = parts
+                if subtask_name not in mapping_data:
+                    logging.warning(
+                        "Subtask %r in mapping file %s (line %d) is not defined in subtasks.json; skipping.",
+                        subtask_name,
+                        mapping_src,
+                        lineno,
+                    )
+                    continue
+                mapping_data[subtask_name].append(offset)
+                copyfile((inputpath, 'tests', f"{test_name}.in"),
+                    (work_dir, 'res/testdata', f"{offset}.in"))
+                copyfile((inputpath, 'tests', f"{test_name}.out"),
                     (work_dir, 'res/testdata', f"{offset}.out"))
                 offset += 1
-            else:
-                # Lines that do not contain exactly two whitespace-separated parts
-                # are skipped (e.g., blank lines or comments in the mapping file).
-                logging.debug(
-                    "Skipping invalid or non-mapping line in tests/mapping: %r",
-                    row.strip()
-                )
-
-    # Ensure that at least one testcase was successfully processed
-    if not any(cases for cases in mapping_data.values()):
-        logging.error('No valid testcases found in mapping file: %s', mapping_src)
+    except FileNotFoundError:
+        logging.error("Mapping file not found at %s", mapping_src)
         sys.exit(1)
+    except OSError as e:
+        logging.error("Error reading mapping file at %s: %s", mapping_src, e)
+        sys.exit(1)
+
     for sub, cases in mapping_data.items():
-        conf['test'].append({'data': cases, 
-                             'weight': subtasks_data['subtasks'][sub]['score']})
+        subtask_info = subtasks_data['subtasks'].get(sub)
+        if not isinstance(subtask_info, dict) or 'score' not in subtask_info:
+            logging.error(
+                "Subtask %r in subtasks.json at %s is missing a 'score' field or has unexpected format",
+                sub,
+                subtasks_json_src,
+            )
+            sys.exit(1)
+        conf['test'].append({
+            'data': cases,
+            'weight': subtask_info['score'],
+        })
 
     logging.info('Creating config file')
     with open(os.path.join(work_dir, 'conf.json'), 'w', encoding='utf-8') as conffile:
