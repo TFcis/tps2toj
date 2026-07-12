@@ -8,7 +8,7 @@ import tarfile
 import tempfile
 import shutil
 from datetime import datetime
-from function import makedirs, copyfile, copyfolder
+from function import makedirs, symlinkfile, symlinkfolder
 
 # progress bar
 def progress_bar(ratio, width=40):
@@ -20,7 +20,7 @@ def progress_bar(ratio, width=40):
 def make_tar_xz_with_progress(src_dir, dest_path):
     members = []
     base_dir = src_dir
-    for root, dirs, files in os.walk(src_dir):
+    for root, dirs, files in os.walk(src_dir, followlinks=True):
         for fn in files:
             full = os.path.join(root, fn)
             arcname = os.path.relpath(full, base_dir)
@@ -30,7 +30,7 @@ def make_tar_xz_with_progress(src_dir, dest_path):
     processed = 0
 
     with lzma.open(dest_path, "wb") as xz_out:
-        with tarfile.open(mode="w|", fileobj=xz_out) as tar:
+        with tarfile.open(mode="w|", fileobj=xz_out, dereference=True) as tar:
             for full, arcname in members:
                 tarinfo = tar.gettarinfo(full, arcname)
                 with open(full, "rb") as f:
@@ -68,7 +68,7 @@ def main():
     except OSError as e:
         logging.error("Failed to open problem.json at '%s': %s", problem_json_path, e)
         sys.exit(1)
-    
+
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     dirname = os.path.dirname(outputpath) or '.'
     basename = os.path.basename(outputpath)
@@ -81,10 +81,10 @@ def main():
         os.remove(dest)
     if args.is_keep_progressing_directory and os.path.exists(final_output_dir):
         shutil.rmtree(final_output_dir)
-    
+
     logging.info('Working directory: %s', work_dir)
     makedirs(work_dir)
-    
+
     conf = {
         'timelimit': int(data['time_limit'] * 1000),
         'memlimit': int(data['memory_limit'] * 1024),
@@ -94,30 +94,30 @@ def main():
         'test': [],
         'metadata': [],
     }
-    
+
     # res/validator
     validator_src = os.path.join(inputpath, 'validator')
     if os.path.isdir(validator_src):
-        logging.info('Copying validator')
-        makedirs(work_dir, 'res/validator')
-        copyfolder((inputpath, 'validator'), (work_dir, 'res/validator'))
-    
+        logging.info('Linking validator')
+        makedirs(work_dir, 'res')
+        symlinkfolder((inputpath, 'validator'), (work_dir, 'res/validator'))
+
     # res/checker
     if data['has_checker']:
-        logging.info('Copying checker')
-        makedirs(work_dir, 'res/checker')
-        copyfolder((inputpath, 'checker'), (work_dir, 'res/checker'))
-        
+        logging.info('Linking checker')
+        makedirs(work_dir, 'res')
+        symlinkfolder((inputpath, 'checker'), (work_dir, 'res/checker'))
+
     # res/grader
     if data['has_grader']:
-        logging.info('Copying grader')
-        makedirs(work_dir, 'res/grader')
-        copyfolder((inputpath, 'grader'), (work_dir, 'res/grader'))
+        logging.info('Linking grader')
+        makedirs(work_dir, 'res')
+        symlinkfolder((inputpath, 'grader'), (work_dir, 'res/grader'))
 
     # res/testdata/testcases
-    logging.info('Copying testcases')
+    logging.info('Linking testcases')
     makedirs(work_dir, 'res/testdata')
-    
+
     offset = 1
 
     subtasks_json_src = os.path.join(inputpath, 'subtasks.json')
@@ -171,9 +171,9 @@ def main():
                     )
                     continue
                 mapping_data[subtask_name].append(offset)
-                copyfile((inputpath, 'tests', f"{test_name}.in"),
+                symlinkfile((inputpath, 'tests', f"{test_name}.in"),
                     (work_dir, 'res/testdata', f"{offset}.in"))
-                copyfile((inputpath, 'tests', f"{test_name}.out"),
+                symlinkfile((inputpath, 'tests', f"{test_name}.out"),
                     (work_dir, 'res/testdata', f"{offset}.out"))
                 offset += 1
     except FileNotFoundError:
@@ -205,8 +205,8 @@ def main():
     makedirs(work_dir, 'http')
     statement_path = os.path.join(inputpath, 'statement', 'index.pdf')
     if os.path.exists(statement_path):
-        logging.info('Copying statements')
-        copyfile((statement_path,), 
+        logging.info('Linking statements')
+        symlinkfile((statement_path,),
                  (work_dir, 'http', 'cont.pdf'))
 
     logging.info('Start compressing with progress...')

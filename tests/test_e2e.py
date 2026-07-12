@@ -112,6 +112,10 @@ class E2ETests(unittest.TestCase):
             self.assertTrue((preserved_dir / "res" / "testdata" / "1.in").exists())
             self.assertTrue((preserved_dir / "res" / "checker" / "checker.cpp").exists())
             self.assertTrue((preserved_dir / "res" / "grader" / "grader.txt").exists())
+            self.assertTrue((preserved_dir / "res" / "testdata" / "1.in").is_symlink())
+            self.assertTrue((preserved_dir / "res" / "testdata" / "1.out").is_symlink())
+            self.assertTrue((preserved_dir / "res" / "checker").is_symlink())
+            self.assertTrue((preserved_dir / "res" / "grader").is_symlink())
 
 
 if __name__ == "__main__":
