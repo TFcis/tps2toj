@@ -14,18 +14,34 @@ if str(ROOT) not in sys.path:
 SCRIPT = ROOT / "tps2toj.py"
 
 
-def _build_dummy_problem(base: Path, with_checker: bool = False, with_grader: bool = False) -> Path:
+def _build_dummy_problem(
+    base: Path,
+    with_checker: bool = False,
+    with_grader: bool = False,
+    with_statement: bool = True,
+    with_validator: bool = True,
+    mapping: str = "s1 a\n",
+    subtasks=None,
+    testcases=None,
+) -> Path:
     input_dir = base / "input"
     (input_dir / "tests").mkdir(parents=True)
-    (input_dir / "validator").mkdir(parents=True)
-    (input_dir / "statement").mkdir(parents=True)
+    if with_validator:
+        (input_dir / "validator").mkdir(parents=True)
+    if with_statement:
+        (input_dir / "statement").mkdir(parents=True)
 
     # Minimal required files
-    (input_dir / "validator" / "placeholder.txt").write_text("validator")
-    (input_dir / "tests" / "mapping").write_text("s1 a\n")
-    (input_dir / "tests" / "a.in").write_text("42\n")
-    (input_dir / "tests" / "a.out").write_text("42\n")
-    (input_dir / "statement" / "index.pdf").write_bytes(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    if with_validator:
+        (input_dir / "validator" / "placeholder.txt").write_text("validator")
+    (input_dir / "tests" / "mapping").write_text(mapping)
+    if testcases is None:
+        testcases = {"a": ("42\n", "42\n")}
+    for name, (input_content, output_content) in testcases.items():
+        (input_dir / "tests" / f"{name}.in").write_text(input_content)
+        (input_dir / "tests" / f"{name}.out").write_text(output_content)
+    if with_statement:
+        (input_dir / "statement" / "index.pdf").write_bytes(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
 
     problem = {
         "time_limit": 1.5,
@@ -34,7 +50,8 @@ def _build_dummy_problem(base: Path, with_checker: bool = False, with_grader: bo
         "has_grader": with_grader,
         "name": "sample",
     }
-    subtasks = {"subtasks": {"s1": {"score": 100}}}
+    if subtasks is None:
+        subtasks = {"subtasks": {"s1": {"score": 100}}}
 
     (input_dir / "problem.json").write_text(json.dumps(problem))
     (input_dir / "subtasks.json").write_text(json.dumps(subtasks))
@@ -63,6 +80,11 @@ def _find_output_dir(output_base: Path):
     return dirs[0] if dirs else None
 
 
+def _run_converter(input_dir: Path, output_base: Path, *extra_args: str) -> subprocess.CompletedProcess:
+    cmd = [sys.executable, str(SCRIPT), *extra_args, str(input_dir), str(output_base)]
+    return subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+
 class E2ETests(unittest.TestCase):
     def test_e2e_creates_archive_without_keep(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -70,8 +92,7 @@ class E2ETests(unittest.TestCase):
             input_dir = _build_dummy_problem(base, with_checker=False, with_grader=False)
             output_base = base / "out"
 
-            cmd = [sys.executable, str(SCRIPT), str(input_dir), str(output_base)]
-            subprocess.run(cmd, check=True)
+            _run_converter(input_dir, output_base)
 
             tar_path = _find_tar(output_base)
             with tarfile.open(tar_path, "r:xz") as tar:
@@ -93,8 +114,7 @@ class E2ETests(unittest.TestCase):
             input_dir = _build_dummy_problem(base, with_checker=True, with_grader=True)
             output_base = base / "out_keep"
 
-            cmd = [sys.executable, str(SCRIPT), "-k", str(input_dir), str(output_base)]
-            subprocess.run(cmd, check=True)
+            _run_converter(input_dir, output_base, "-k")
 
             tar_path = _find_tar(output_base)
             with tarfile.open(tar_path, "r:xz") as tar:
@@ -116,6 +136,85 @@ class E2ETests(unittest.TestCase):
             self.assertTrue((preserved_dir / "res" / "testdata" / "1.out").is_symlink())
             self.assertTrue((preserved_dir / "res" / "checker").is_symlink())
             self.assertTrue((preserved_dir / "res" / "grader").is_symlink())
+
+    def test_e2e_skips_comments_malformed_lines_and_unknown_subtasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            input_dir = _build_dummy_problem(
+                base,
+                mapping="# comment\n\ns1 a\nmalformed\nunknown b\ns2 c\n",
+                subtasks={"subtasks": {"s1": {"score": 40}, "s2": {"score": 60}}},
+                testcases={
+                    "a": ("1\n", "1\n"),
+                    "b": ("2\n", "2\n"),
+                    "c": ("3\n", "3\n"),
+                },
+            )
+            output_base = base / "out_mapping"
+
+            result = _run_converter(input_dir, output_base)
+
+            self.assertIn("Skipping malformed line", result.stderr)
+            self.assertIn("is not defined in subtasks.json", result.stderr)
+            tar_path = _find_tar(output_base)
+            with tarfile.open(tar_path, "r:xz") as tar:
+                names = tar.getnames()
+                self.assertIn("res/testdata/1.in", names)
+                self.assertIn("res/testdata/2.in", names)
+                self.assertNotIn("res/testdata/3.in", names)
+                self.assertEqual(tar.extractfile("res/testdata/1.in").read().decode(), "1\n")
+                self.assertEqual(tar.extractfile("res/testdata/2.in").read().decode(), "3\n")
+                conf = json.load(tar.extractfile("conf.json"))
+                self.assertEqual(
+                    conf["test"],
+                    [{"data": [1], "weight": 40}, {"data": [2], "weight": 60}],
+                )
+
+    def test_e2e_omits_optional_statement_and_validator_when_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            input_dir = _build_dummy_problem(
+                base,
+                with_statement=False,
+                with_validator=False,
+            )
+            output_base = base / "out_optional"
+
+            _run_converter(input_dir, output_base)
+
+            tar_path = _find_tar(output_base)
+            with tarfile.open(tar_path, "r:xz") as tar:
+                names = tar.getnames()
+                self.assertNotIn("http/cont.pdf", names)
+                self.assertNotIn("res/validator/placeholder.txt", names)
+                self.assertIn("conf.json", names)
+
+    def test_e2e_rejects_unexpected_subtasks_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            input_dir = _build_dummy_problem(base, subtasks={"subtasks": []})
+            output_base = base / "out_bad_subtasks"
+
+            cmd = [sys.executable, str(SCRIPT), str(input_dir), str(output_base)]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unexpected format", result.stderr)
+            self.assertEqual(list(base.glob("*.tar.xz")), [])
+
+    def test_e2e_fails_when_problem_json_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            input_dir = _build_dummy_problem(base)
+            (input_dir / "problem.json").unlink()
+            output_base = base / "out_missing_problem"
+
+            cmd = [sys.executable, str(SCRIPT), str(input_dir), str(output_base)]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("problem.json not found", result.stderr)
+            self.assertEqual(list(base.glob("*.tar.xz")), [])
 
 
 if __name__ == "__main__":

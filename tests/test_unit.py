@@ -8,11 +8,46 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from function import symlinkfolder
+from function import makedirs, symlinkfile, symlinkfolder
 from tps2toj import make_tar_xz_with_progress
 
 
 class HelperTests(unittest.TestCase):
+    def test_makedirs_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a" / "b"
+
+            makedirs(path)
+            makedirs(path)
+
+            self.assertTrue(path.is_dir())
+
+    def test_symlinkfile_links_destination_with_absolute_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = base / "source.txt"
+            dst = base / "linked.txt"
+            src.write_text("hello")
+
+            symlinkfile((src,), (dst,))
+
+            self.assertTrue(dst.is_symlink())
+            self.assertEqual(Path(dst.readlink()), src.resolve())
+            self.assertEqual(dst.read_text(), "hello")
+
+    def test_symlinkfile_keeps_existing_destination(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = base / "source.txt"
+            dst = base / "linked.txt"
+            src.write_text("source")
+            dst.write_text("existing")
+
+            symlinkfile((src,), (dst,))
+
+            self.assertFalse(dst.is_symlink())
+            self.assertEqual(dst.read_text(), "existing")
+
     def test_symlinkfolder_links_destination(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -25,6 +60,7 @@ class HelperTests(unittest.TestCase):
 
             linked = dst / "nested" / "file.txt"
             self.assertTrue(dst.is_symlink())
+            self.assertEqual(Path(dst.readlink()), src.resolve())
             self.assertTrue(linked.exists())
             self.assertEqual(linked.read_text(), "hello")
 
@@ -45,6 +81,19 @@ class HelperTests(unittest.TestCase):
                 extracted = tar.extractfile("a.txt")
                 self.assertIsNotNone(extracted)
                 self.assertEqual(extracted.read().decode(), "content")
+
+    def test_make_tar_xz_with_progress_handles_empty_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = base / "src"
+            src.mkdir()
+
+            dest = base / "out.tar.xz"
+            make_tar_xz_with_progress(str(src), str(dest))
+
+            self.assertTrue(dest.exists())
+            with tarfile.open(dest, "r:xz") as tar:
+                self.assertEqual(tar.getnames(), [])
 
     def test_make_tar_xz_with_progress_dereferences_symlinks(self):
         with tempfile.TemporaryDirectory() as tmp:
