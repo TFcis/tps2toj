@@ -123,17 +123,6 @@ def main():
     subtasks_json_src = os.path.join(inputpath, 'subtasks.json')
     mapping_src = os.path.join(inputpath, 'tests', 'mapping')
     mapping_data = {}
-    with open(subtasks_json_src, 'rt', encoding='utf-8') as json_file:
-        subtasks_data = json.load(json_file)
-    for sub in subtasks_data['subtasks']:
-        mapping_data[sub] = []
-    with open(mapping_src, 'rt', encoding='utf-8') as mapping_file:
-        for row in mapping_file:
-            parts = row.strip().split()
-            if len(parts) == 2:
-                mapping_data[parts[0]].append(offset)
-                copyfile((inputpath, 'tests', f"{parts[1]}.in"),
-                    (work_dir, 'res/testdata', f"{offset}.in"))
     try:
         with open(subtasks_json_src, 'rt', encoding='utf-8') as json_file:
             subtasks_data = json.load(json_file)
