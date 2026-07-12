@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import tarfile
 import tempfile
@@ -72,7 +74,7 @@ class HelperTests(unittest.TestCase):
             (src / "a.txt").write_text("content")
 
             dest = base / "out.tar.xz"
-            make_tar_xz_with_progress(str(src), str(dest))
+            make_tar_xz_with_progress(str(src), str(dest), show_progress=False)
 
             self.assertTrue(dest.exists())
             with tarfile.open(dest, "r:xz") as tar:
@@ -89,7 +91,7 @@ class HelperTests(unittest.TestCase):
             src.mkdir()
 
             dest = base / "out.tar.xz"
-            make_tar_xz_with_progress(str(src), str(dest))
+            make_tar_xz_with_progress(str(src), str(dest), show_progress=False)
 
             self.assertTrue(dest.exists())
             with tarfile.open(dest, "r:xz") as tar:
@@ -108,7 +110,7 @@ class HelperTests(unittest.TestCase):
             (work / "linked-file.txt").symlink_to(source / "a.txt")
 
             dest = base / "out.tar.xz"
-            make_tar_xz_with_progress(str(work), str(dest))
+            make_tar_xz_with_progress(str(work), str(dest), show_progress=False)
 
             with tarfile.open(dest, "r:xz") as tar:
                 linked_dir_info = tar.getmember("linked-dir/a.txt")
@@ -117,6 +119,21 @@ class HelperTests(unittest.TestCase):
                 self.assertTrue(linked_file_info.isfile())
                 self.assertEqual(tar.extractfile(linked_dir_info).read().decode(), "content")
                 self.assertEqual(tar.extractfile(linked_file_info).read().decode(), "content")
+
+    def test_make_tar_xz_with_progress_can_disable_progress_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = base / "src"
+            src.mkdir()
+            (src / "a.txt").write_text("content")
+
+            dest = base / "out.tar.xz"
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                make_tar_xz_with_progress(str(src), str(dest), show_progress=False)
+
+            self.assertEqual(output.getvalue(), "")
+            self.assertTrue(dest.exists())
 
 
 if __name__ == "__main__":

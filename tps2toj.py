@@ -7,6 +7,7 @@ import lzma
 import tarfile
 import tempfile
 import shutil
+import time
 from datetime import datetime
 from function import makedirs, symlinkfile, symlinkfolder
 
@@ -17,29 +18,39 @@ def progress_bar(ratio, width=40):
     sys.stdout.write(f"\rCompression Progress: [{bar}] {ratio*100:5.1f}%")
     sys.stdout.flush()
 
-def make_tar_xz_with_progress(src_dir, dest_path):
+def make_tar_xz_with_progress(src_dir, dest_path, show_progress=True, progress_interval=0.1):
     members = []
     base_dir = src_dir
     for root, dirs, files in os.walk(src_dir, followlinks=True):
         for fn in files:
             full = os.path.join(root, fn)
             arcname = os.path.relpath(full, base_dir)
-            members.append((full, arcname))
+            members.append((full, arcname, os.path.getsize(full)))
 
-    total_bytes = sum(os.path.getsize(full) for full, _ in members)
+    total_bytes = sum(size for _, _, size in members)
     processed = 0
+    next_progress_at = 0
+
+    def maybe_show_progress(force=False):
+        nonlocal next_progress_at
+        if not show_progress or total_bytes == 0:
+            return
+        now = time.monotonic()
+        if force or now >= next_progress_at:
+            progress_bar(processed / total_bytes)
+            next_progress_at = now + progress_interval
 
     with lzma.open(dest_path, "wb") as xz_out:
         with tarfile.open(mode="w|", fileobj=xz_out, dereference=True) as tar:
-            for full, arcname in members:
+            for full, arcname, size in members:
                 tarinfo = tar.gettarinfo(full, arcname)
                 with open(full, "rb") as f:
                     tar.addfile(tarinfo, fileobj=f)
-                processed += os.path.getsize(full)
-                if total_bytes > 0:
-                    progress_bar(processed / total_bytes)
-    sys.stdout.write("\n")
-    sys.stdout.flush()
+                processed += size
+                maybe_show_progress(force=processed == total_bytes)
+    if show_progress and total_bytes > 0:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
 
 def main():
@@ -48,6 +59,7 @@ def main():
     parser.add_argument('outputpath', type=str, help='output directory')
     parser.add_argument('-d', '--debug', action='store_const', dest='loglevel', const=logging.DEBUG)
     parser.add_argument('-k', '--keep-progressing-directory', action='store_true', dest='is_keep_progressing_directory', help='保留過程產出的資料夾')
+    parser.add_argument('--no-progress', action='store_true', help='不要輸出壓縮進度')
     parser.set_defaults(loglevel=logging.INFO)
     args = parser.parse_args()
     inputpath = args.inputpath
@@ -209,9 +221,9 @@ def main():
         symlinkfile((statement_path,),
                  (work_dir, 'http', 'cont.pdf'))
 
-    logging.info('Start compressing with progress...')
+    logging.info('Start compressing%s...', '' if args.no_progress else ' with progress')
     try:
-        make_tar_xz_with_progress(work_dir, dest)
+        make_tar_xz_with_progress(work_dir, dest, show_progress=not args.no_progress)
 
         if args.is_keep_progressing_directory:
             logging.info('Preserving working directory -> %s', final_output_dir)

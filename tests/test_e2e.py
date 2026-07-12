@@ -189,6 +189,17 @@ class E2ETests(unittest.TestCase):
                 self.assertNotIn("res/validator/placeholder.txt", names)
                 self.assertIn("conf.json", names)
 
+    def test_e2e_no_progress_suppresses_progress_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            input_dir = _build_dummy_problem(base)
+            output_base = base / "out_no_progress"
+
+            result = _run_converter(input_dir, output_base, "--no-progress")
+
+            self.assertNotIn("Compression Progress", result.stdout)
+            self.assertTrue(_find_tar(output_base).exists())
+
     def test_e2e_rejects_unexpected_subtasks_format(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
