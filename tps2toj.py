@@ -130,8 +130,6 @@ def main():
     logging.info('Linking testcases')
     makedirs(work_dir, 'res/testdata')
 
-    offset = 1
-
     subtasks_json_src = os.path.join(inputpath, 'subtasks.json')
     mapping_src = os.path.join(inputpath, 'tests', 'mapping')
     mapping_data = {}
@@ -182,7 +180,7 @@ def main():
                         lineno,
                     )
                     continue
-                mapping_data[subtask_name].append(offset)
+                mapping_data[subtask_name].append(test_name)
                 symlinkfile((inputpath, 'tests', f"{test_name}.in"),
                     (work_dir, 'res/testdata', f"{offset}.in"))
                 symlinkfile((inputpath, 'tests', f"{test_name}.out"),

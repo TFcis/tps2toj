@@ -98,12 +98,12 @@ class E2ETests(unittest.TestCase):
             with tarfile.open(tar_path, "r:xz") as tar:
                 names = tar.getnames()
                 self.assertIn("conf.json", names)
-                self.assertIn("res/testdata/1.in", names)
-                self.assertIn("res/testdata/1.out", names)
+                self.assertIn("res/testdata/a.in", names)
+                self.assertIn("res/testdata/a.out", names)
                 conf = json.load(tar.extractfile("conf.json"))
                 self.assertEqual(conf["timelimit"], 1500)
                 self.assertEqual(conf["memlimit"], 256 * 1024)
-                self.assertEqual(conf["test"], [{"data": [1], "weight": 100}])
+                self.assertEqual(conf["test"], [{"data": ["a"], "weight": 100}])
 
             preserved_dir = _find_output_dir(output_base)
             self.assertIsNone(preserved_dir)  # should be cleaned when keep flag is not set
@@ -129,11 +129,11 @@ class E2ETests(unittest.TestCase):
             preserved_dir = _find_output_dir(output_base)
             self.assertIsNotNone(preserved_dir)
             self.assertTrue((preserved_dir / "conf.json").exists())
-            self.assertTrue((preserved_dir / "res" / "testdata" / "1.in").exists())
+            self.assertTrue((preserved_dir / "res" / "testdata" / "a.in").exists())
             self.assertTrue((preserved_dir / "res" / "checker" / "checker.cpp").exists())
             self.assertTrue((preserved_dir / "res" / "grader" / "grader.txt").exists())
-            self.assertTrue((preserved_dir / "res" / "testdata" / "1.in").is_symlink())
-            self.assertTrue((preserved_dir / "res" / "testdata" / "1.out").is_symlink())
+            self.assertTrue((preserved_dir / "res" / "testdata" / "a.in").is_symlink())
+            self.assertTrue((preserved_dir / "res" / "testdata" / "a.out").is_symlink())
             self.assertTrue((preserved_dir / "res" / "checker").is_symlink())
             self.assertTrue((preserved_dir / "res" / "grader").is_symlink())
 
@@ -159,15 +159,15 @@ class E2ETests(unittest.TestCase):
             tar_path = _find_tar(output_base)
             with tarfile.open(tar_path, "r:xz") as tar:
                 names = tar.getnames()
-                self.assertIn("res/testdata/1.in", names)
-                self.assertIn("res/testdata/2.in", names)
-                self.assertNotIn("res/testdata/3.in", names)
-                self.assertEqual(tar.extractfile("res/testdata/1.in").read().decode(), "1\n")
-                self.assertEqual(tar.extractfile("res/testdata/2.in").read().decode(), "3\n")
+                self.assertIn("res/testdata/a.in", names)
+                self.assertIn("res/testdata/c.in", names)
+                self.assertNotIn("res/testdata/b.in", names)
+                self.assertEqual(tar.extractfile("res/testdata/a.in").read().decode(), "1\n")
+                self.assertEqual(tar.extractfile("res/testdata/c.in").read().decode(), "3\n")
                 conf = json.load(tar.extractfile("conf.json"))
                 self.assertEqual(
                     conf["test"],
-                    [{"data": [1], "weight": 40}, {"data": [2], "weight": 60}],
+                    [{"data": ["a"], "weight": 40}, {"data": ["c"], "weight": 60}],
                 )
 
     def test_e2e_omits_optional_statement_and_validator_when_absent(self):
