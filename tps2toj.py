@@ -133,6 +133,7 @@ def main():
     subtasks_json_src = os.path.join(inputpath, 'subtasks.json')
     mapping_src = os.path.join(inputpath, 'tests', 'mapping')
     mapping_data = {}
+    linked_testcases = set()
     try:
         with open(subtasks_json_src, 'rt', encoding='utf-8') as json_file:
             subtasks_data = json.load(json_file)
@@ -181,11 +182,16 @@ def main():
                     )
                     continue
                 mapping_data[subtask_name].append(test_name)
-                symlinkfile((inputpath, 'tests', f"{test_name}.in"),
-                    (work_dir, 'res/testdata', f"{offset}.in"))
-                symlinkfile((inputpath, 'tests', f"{test_name}.out"),
-                    (work_dir, 'res/testdata', f"{offset}.out"))
-                offset += 1
+                if test_name not in linked_testcases:
+                    testcase_input = os.path.join(work_dir, 'res/testdata', f"{test_name}.in")
+                    testcase_output = os.path.join(work_dir, 'res/testdata', f"{test_name}.out")
+                    makedirs(os.path.dirname(testcase_input))
+                    makedirs(os.path.dirname(testcase_output))
+                    symlinkfile((inputpath, 'tests', f"{test_name}.in"),
+                        (testcase_input,))
+                    symlinkfile((inputpath, 'tests', f"{test_name}.out"),
+                        (testcase_output,))
+                    linked_testcases.add(test_name)
     except FileNotFoundError:
         logging.error("Mapping file not found at %s", mapping_src)
         sys.exit(1)

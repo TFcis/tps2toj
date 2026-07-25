@@ -170,6 +170,31 @@ class E2ETests(unittest.TestCase):
                     [{"data": ["a"], "weight": 40}, {"data": ["c"], "weight": 60}],
                 )
 
+    def test_e2e_reuses_duplicate_mapping_values_across_subtasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            input_dir = _build_dummy_problem(
+                base,
+                mapping="k0 2-01\nfull 2-01\n",
+                subtasks={"subtasks": {"k0": {"score": 30}, "full": {"score": 70}}},
+                testcases={"2-01": ("same input\n", "same output\n")},
+            )
+            output_base = base / "out_duplicate"
+
+            _run_converter(input_dir, output_base)
+
+            tar_path = _find_tar(output_base)
+            with tarfile.open(tar_path, "r:xz") as tar:
+                names = tar.getnames()
+                self.assertEqual(names.count("res/testdata/2-01.in"), 1)
+                self.assertEqual(names.count("res/testdata/2-01.out"), 1)
+                self.assertEqual(tar.extractfile("res/testdata/2-01.in").read().decode(), "same input\n")
+                conf = json.load(tar.extractfile("conf.json"))
+                self.assertEqual(
+                    conf["test"],
+                    [{"data": ["2-01"], "weight": 30}, {"data": ["2-01"], "weight": 70}],
+                )
+
     def test_e2e_omits_optional_statement_and_validator_when_absent(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
