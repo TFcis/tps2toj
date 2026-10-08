@@ -18,7 +18,7 @@ def progress_bar(ratio, width=40):
     sys.stdout.write(f"\rCompression Progress: [{bar}] {ratio*100:5.1f}%")
     sys.stdout.flush()
 
-def make_tar_xz_with_progress(src_dir, dest_path, show_progress=True, progress_interval=0.1):
+def make_tar_xz_with_progress(src_dir, dest_path, show_progress=True, progress_interval=0.1, compression_level=lzma.PRESET_DEFAULT):
     members = []
     base_dir = src_dir
     for root, dirs, files in os.walk(src_dir, followlinks=True):
@@ -40,7 +40,7 @@ def make_tar_xz_with_progress(src_dir, dest_path, show_progress=True, progress_i
             progress_bar(processed / total_bytes)
             next_progress_at = now + progress_interval
 
-    with lzma.open(dest_path, "wb") as xz_out:
+    with lzma.open(dest_path, "wb", preset=compression_level) as xz_out:
         with tarfile.open(mode="w|", fileobj=xz_out, dereference=True) as tar:
             for full, arcname, size in members:
                 tarinfo = tar.gettarinfo(full, arcname)
@@ -60,6 +60,7 @@ def main():
     parser.add_argument('-d', '--debug', action='store_const', dest='loglevel', const=logging.DEBUG)
     parser.add_argument('-k', '--keep-progressing-directory', action='store_true', dest='is_keep_progressing_directory', help='保留過程產出的資料夾')
     parser.add_argument('--no-progress', action='store_true', help='不要輸出壓縮進度')
+    parser.add_argument('--compression-level', type=int, choices=range(0, 10), default=lzma.PRESET_DEFAULT, help='LZMA compression level (0-9)')
     parser.set_defaults(loglevel=logging.INFO)
     args = parser.parse_args()
     inputpath = args.inputpath
@@ -227,7 +228,7 @@ def main():
 
     logging.info('Start compressing%s...', '' if args.no_progress else ' with progress')
     try:
-        make_tar_xz_with_progress(work_dir, dest, show_progress=not args.no_progress)
+        make_tar_xz_with_progress(work_dir, dest, show_progress=not args.no_progress, compression_level=args.compression_level)
 
         if args.is_keep_progressing_directory:
             logging.info('Preserving working directory -> %s', final_output_dir)

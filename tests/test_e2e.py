@@ -225,6 +225,16 @@ class E2ETests(unittest.TestCase):
             self.assertNotIn("Compression Progress", result.stdout)
             self.assertTrue(_find_tar(output_base).exists())
 
+    def test_e2e_different_compression_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            input_dir = _build_dummy_problem(base)
+            output_base = base / "out_no_progress"
+
+            _ = _run_converter(input_dir, output_base, "--compression-level=0")
+
+            self.assertTrue(_find_tar(output_base).exists())
+
     def test_e2e_rejects_unexpected_subtasks_format(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
